@@ -4,14 +4,20 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 class PowerConsumptionDataset:
-    def __init__(self, file_path, num_of_features=7, sequence_length=60):
+    def __init__(self, file_path, feature_idx=[], num_of_features=7, sequence_length=60):
         self.file_path = file_path
         self.sequence_length = sequence_length
         self.scaler = MinMaxScaler()
 
         all_features = ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 
                         'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3']
-        self.selected_features = all_features[0:num_of_features]
+        
+        if len(feature_idx)>0:
+            self.selected_features = [all_features[i] for i in feature_idx if i < len(all_features)]
+        else:
+            self.selected_features = all_features
+    
+        # self.selected_features = all_features[0:num_of_features]
         
     def load_data(self):
         # Load and preprocess data

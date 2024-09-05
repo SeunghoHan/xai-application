@@ -5,12 +5,15 @@ import numpy as np
 
 from .lstm import LSTMModel
 from .gru import GRUModel
+from .lstm_attention import LSTMWithAttention
 
 def create_model(model_name, input_size, hidden_size, num_layers, output_size, dropout=0.2):
     if model_name == 'GRU':
         return GRUModel(input_size, hidden_size, num_layers, output_size, dropout)
     elif model_name == 'LSTM':
         return LSTMModel(input_size, hidden_size, num_layers, output_size, dropout)
+    elif model_name == 'LSTM_Attention':
+        return LSTMWithAttention(input_size, hidden_size, num_layers, output_size, dropout)
     else:
         raise ValueError(f"Model {model_name} is not recognized. Please use 'GRU' or 'LSTM'.")
 
@@ -46,7 +49,7 @@ def train_and_evaluate(model, train_sequences, train_targets,
                 sequences_batch, targets_batch = sequences_batch.to(device), targets_batch.to(device)
                 
                 # Forward pass
-                outputs = model(sequences_batch)
+                outputs, _ = model(sequences_batch)
                 loss = criterion(outputs.squeeze(), targets_batch)
 
                 # Backward pass and optimization
@@ -69,7 +72,7 @@ def train_and_evaluate(model, train_sequences, train_targets,
                 # Move batch to GPU
                 sequences_batch, targets_batch = sequences_batch.to(device), targets_batch.to(device)
                 
-                val_outputs = model(sequences_batch)
+                val_outputs, _ = model(sequences_batch)
                 loss = criterion(val_outputs.squeeze(), targets_batch)
                 eval_loss += loss.item()
 

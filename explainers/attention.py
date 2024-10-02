@@ -21,8 +21,16 @@ class AttentionExplainer(BaseExplainer):
         
         return attention_weights, output.item()
     
-    def visualize_attention(self, data_point):
-        """Visualize the attention weights along with input features for a specific data point."""
+    def visualize_attention(self, data_point, n=5):
+        """
+        Visualize the attention weights along with input features for a specific data point
+        and print the feature values at the top n attention-weighted time steps. The top n
+        time steps are also highlighted on the plot with a label.
+        
+        Args:
+            data_point: 입력 데이터 포인트 (sequence_length, input_size)
+            n: attention 가중치가 가장 큰 상위 n개의 타임스텝에 대해 출력할 feature 값 수
+        """
         attention_weights, prediction = self.explain(data_point)
         
         # 시각화 설정
@@ -42,6 +50,15 @@ class AttentionExplainer(BaseExplainer):
         ax2.plot(attention_weights, label='Attention Weights', color='red', linestyle='--', alpha=0.6)
         ax2.fill_between(range(len(attention_weights)), attention_weights, color='red', alpha=0.3)
 
+        # 상위 n개의 타임스텝 추출
+        top_n_indices = np.argsort(attention_weights)[-n:][::-1]  # 상위 n개 인덱스를 attention 크기 순으로 정렬
+        
+        # 그래프에 top n 위치 표시
+        for idx, step in enumerate(top_n_indices, 1):
+            ax2.scatter(step, attention_weights[step], color='red', zorder=5)
+            ax2.annotate(f"Top {idx}", (step, attention_weights[step]), 
+                         textcoords="offset points", xytext=(0, 10), ha='center', color='red')
+
         # 그래프 설정
         plt.title("Input Features and Attention Weights for a Data Point")
         plt.xlabel("Time Step")
@@ -57,7 +74,15 @@ class AttentionExplainer(BaseExplainer):
         plt.tight_layout()
         plt.show()
         
+        # Attention 가중치가 큰 상위 n개 타임스텝을 출력
         print(f"Prediction for the data point: {prediction}")
+        print(f"Top {n} time steps with highest attention weights:")
+        
+        for idx, step in enumerate(top_n_indices, 1):
+            print(f"Top {idx} - Time step {step}: Attention Weight = {attention_weights[step]}")
+            for i, feature_name in enumerate(feature_names):
+                print(f"  {feature_name}: {sequence_np[step, i]}")
+                
     
     def analyze_attention_distribution(self, num_samples=300):
         """Analyze the attention weight distribution across multiple samples."""
@@ -129,7 +154,7 @@ class AttentionExplainer(BaseExplainer):
         # 중요한 기울기 변화 지점에 점과 라벨 추가 ('top {x} in step {x}' 형식)
         for idx, step in enumerate(sorted(top_indices), 1):
             plt.scatter(step, cumulative_attention[step], color='red', zorder=5)
-            plt.annotate(f"Top {idx} in step {step}", (step, cumulative_attention[step]), 
+            plt.annotate(f"Top {idx}", (step, cumulative_attention[step]), 
                          textcoords="offset points", xytext=(0, 15), ha='center', color='red')
 
         # 그래프 설정
@@ -140,5 +165,14 @@ class AttentionExplainer(BaseExplainer):
         plt.tight_layout()
         plt.show()
 
+        # Top n 포인트에 대한 feature 값을 출력
+        sequence_np = np.array(data_point)  # 입력 데이터 포인트 (sequence_length, input_size)
+        feature_names = self.selected_features  # 선택된 feature 리스트
+
         print(f"Prediction for the data point: {prediction}")
-        print(f"Top {num_points} steps with largest gradient changes: {sorted(top_indices)}")
+        print(f"Top {num_points} steps with largest gradient changes:")
+
+        for idx, step in enumerate(sorted(top_indices), 1):
+            print(f"Top {idx} - Time step {step}: Gradient Change = {gradient[step-1]}")  # 기울기 변화값 출력
+            for i, feature_name in enumerate(feature_names):
+                print(f"  {feature_name}: {sequence_np[step, i]}")  # 해당 타임스텝의 feature 값 출력

@@ -9,8 +9,7 @@ class PowerConsumptionDataset:
         self.sequence_length = sequence_length
         self.scaler = MinMaxScaler()
 
-        all_features = ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 
-                        'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3']
+        all_features = ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3']
         
         if len(feature_idx)>0:
             self.selected_features = [all_features[i] for i in feature_idx if i < len(all_features)]

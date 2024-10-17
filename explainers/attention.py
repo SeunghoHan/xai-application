@@ -38,8 +38,9 @@ class AttentionExplainer(BaseExplainer):
 
         # 입력된 시퀀스의 feature 시각화
         sequence_np = np.array(data_point)  # data_point는 입력 시퀀스 (sequence_length, input_size)
-        feature_colors = ['blue', 'green', 'orange', 'purple']  # 각 feature에 대한 색상 지정
+        feature_colors = ['blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'black']  # 각 feature에 대한 색상 지정
         feature_names = self.selected_features  # Feature 이름
+        feature_colors = feature_colors[:len(feature_names)]
         
         # Feature 값 그래프 그리기
         for i, feature_name in enumerate(feature_names):

@@ -51,9 +51,9 @@ class LimeExplainer(BaseExplainer):
             outputs = self.model(input_data)
         return outputs.cpu().numpy()
 
-    def explain(self, data_point, data_index=0):
+    def explain(self, data_point, data_index=0, num_features=10):
         specific_data_point = data_point.reshape(-1)
-        specific_explanation = self.lime_tab.explain_instance(specific_data_point, self.predict_fn, num_samples=1000, num_features=10)
+        specific_explanation = self.lime_tab.explain_instance(specific_data_point, self.predict_fn, num_samples=1000, num_features=num_features)
         specific_explanation.show_in_notebook(show_table=True)
         important_features = specific_explanation.as_list()
         self.visualize_lime_explanation(important_features, self.sequences, self.sequence_length, self.selected_features, data_index)

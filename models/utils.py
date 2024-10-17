@@ -50,6 +50,7 @@ def train_and_evaluate(model, train_sequences, train_targets,
                 
                 # Forward pass
                 outputs, _ = model(sequences_batch)
+                # outputs = model(sequences_batch)
                 loss = criterion(outputs.squeeze(), targets_batch)
 
                 # Backward pass and optimization
@@ -73,6 +74,7 @@ def train_and_evaluate(model, train_sequences, train_targets,
                 sequences_batch, targets_batch = sequences_batch.to(device), targets_batch.to(device)
                 
                 val_outputs, _ = model(sequences_batch)
+                # val_outputs = model(sequences_batch)
                 loss = criterion(val_outputs.squeeze(), targets_batch)
                 eval_loss += loss.item()
 

@@ -282,7 +282,7 @@ class ShapExplainer:
                 print(f"Error with sequence {i}: {e}")
                 continue  # 오류가 있는 시퀀스는 스킵
     
-            self.plot_summary(shap_values[i], sample_df, feature_names, i)
+            self.plot_summary(shap_values[i], sample_df, feature_names)
             self.plot_dependence_correlation(shap_values[i], sample_df, 
                                              target_feature=target_feature_1, 
                                              interaction_feature=target_feature_2)  

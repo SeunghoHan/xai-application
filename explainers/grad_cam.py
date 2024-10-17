@@ -101,7 +101,7 @@ class GradCAMExplainer:
         """
         sequence_length = data_point.shape[0]
         
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(16, 8))
         plt.plot(grad_cam_weights, label='Grad-CAM Weights', color='red', linestyle='--')
         plt.fill_between(range(sequence_length), grad_cam_weights, color='red', alpha=0.3)
         
@@ -129,7 +129,7 @@ class GradCAMExplainer:
         
         feature_colors = ['blue', 'green', 'orange', 'purple']
         
-        plt.figure(figsize=(12, 6))
+        plt.figure(figsize=(16, 8))
         for i in range(input_size):
             plt.plot(grad_cam_weights[:, i], label=f'{selected_features[i]} Grad-CAM', color=feature_colors[i % len(feature_colors)])
             plt.fill_between(range(sequence_length), grad_cam_weights[:, i], color=feature_colors[i % len(feature_colors)], alpha=0.3)
@@ -142,7 +142,7 @@ class GradCAMExplainer:
         plt.show()
 
         for i in range(input_size):
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(12, 7))
             plt.plot(grad_cam_weights[:, i], label=f'{selected_features[i]} Grad-CAM', color=feature_colors[i % len(feature_colors)])
             plt.fill_between(range(sequence_length), grad_cam_weights[:, i], color=feature_colors[i % len(feature_colors)], alpha=0.3)
             

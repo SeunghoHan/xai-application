@@ -2,6 +2,46 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+ 
+class PowerWeatherDataset:
+    def __init__(self, file_path, sequence_length=24*30, prediction_length=24):
+        self.file_path = file_path
+        self.sequence_length = sequence_length  
+        self.prediction_length = prediction_length  
+        self.scaler = MinMaxScaler()
+
+        # 모든 피처 정의 (datetime 제외)
+        all_features = ['Global_active_power', 'Global_intensity', 
+                        'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3', 
+                        'Temp_Avg', 'Humidity_Avg']
+        
+        self.selected_features = all_features
+
+    def load_data(self):
+        data = pd.read_csv(self.file_path)
+        data = data.drop(['datetime'], axis=1)
+
+        data.fillna(data.mean(), inplace=True)
+
+        data_scaled = self.scaler.fit_transform(data[self.selected_features].values)
+
+        sequences, targets = self.create_sequences(data_scaled)
+
+        train_sequences, eval_sequences, train_targets, eval_targets = train_test_split(
+            sequences, targets, test_size=0.2, random_state=42)
+
+        return train_sequences, eval_sequences, train_targets, eval_targets
+
+    def create_sequences(self, data):
+        sequences = []
+        targets = []
+
+        for i in range(len(data) - self.sequence_length - self.prediction_length):
+            sequences.append(data[i:i + self.sequence_length, :])
+            targets.append(data[i + self.sequence_length: i + self.sequence_length + self.prediction_length, 0])
+
+        return np.array(sequences), np.array(targets)
+
 
 class PowerConsumptionDataset:
     def __init__(self, file_path, feature_idx=[], num_of_features=7, sequence_length=60):

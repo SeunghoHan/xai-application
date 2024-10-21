@@ -7,14 +7,14 @@ import lime
 from lime import lime_tabular
 import matplotlib.pyplot as plt
 
+from .utils import inverse_transform_time_features
 from .base_explainer import BaseExplainer
 
 class LimeExplainer(BaseExplainer):
-    def __init__(self, model, device, sequences, sequence_length, input_size, selected_features):
-        # explainer_path = f'./trained_explainer/lime_{len(selected_features)}.pkl'
+    def __init__(self, model, device, sequences, sequence_length, input_size, selected_features, scaler):
         super().__init__(model, device, sequences, sequence_length, input_size, selected_features)
         self.lime_tab = self.create_explainer()
-        # self.lime_tab = self.create_or_load_explainer(explainer_path)
+        self.scaler = scaler 
     
 
     def create_explainer(self):
@@ -24,24 +24,6 @@ class LimeExplainer(BaseExplainer):
             class_names=['Global_active_power'],
             mode='regression'
         )
-
-    # def create_or_load_explainer(self, explainer_path):
-    #     if not os.path.exists(explainer_path):
-    #         explainer = lime_tabular.LimeTabularExplainer(
-    #             training_data=self.sequences.reshape(-1, self.sequence_length * self.input_size),
-    #             feature_names=[f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features],
-    #             class_names=['Global_active_power'],
-    #             mode='regression'
-    #         )
-    #         os.makedirs(os.path.dirname(explainer_path), exist_ok=True)
-    #         with open(explainer_path, 'wb') as file:
-    #             pickle.dump(explainer, file)
-    #     else:
-    #         print('LIME explainer configuration found, loading from file.')
-    #         with open(explainer_path, 'rb') as file:
-    #             explainer = pickle.load(file)
-
-    #     return explainer
 
     def predict_fn(self, input_data):
         input_data = input_data.reshape(-1, self.sequence_length, self.input_size)
@@ -64,7 +46,10 @@ class LimeExplainer(BaseExplainer):
         feature_dict = {}
         comp_op = r'(<=|>=|<|>)'
         alph_op = r'[a-zA-Z_]+\d*(?:_\d+)*'
-        
+    
+        # 정규화된 데이터를 원래 값으로 복구 (시간 피처 포함)
+        original_sequences = inverse_transform_time_features(sequences, selected_features, self.scaler)
+    
         for feature_description, importance in important_features:
             feature_name = feature_description
             while re.search(comp_op, feature_name):
@@ -72,16 +57,18 @@ class LimeExplainer(BaseExplainer):
     
             feature_name = re.search(alph_op, feature_name)
             feature_name = feature_name.group(0)
-                
+    
             feature_index = self.lime_tab.feature_names.index(feature_name)
             actual_feature, time_step = feature_name.rsplit('_', 1)
             time_step = int(time_step)
-        
+    
             # Add the feature to the dictionary
             if actual_feature not in feature_dict:
                 feature_dict[actual_feature] = []
             
-            feature_dict[actual_feature].append((time_step, sequences[0][time_step, selected_features.index(actual_feature)], importance))
+            # Use the original (denormalized) sequence data for plotting
+            feature_value = original_sequences[0][time_step, selected_features.index(actual_feature)]
+            feature_dict[actual_feature].append((time_step, feature_value, importance))
     
         # Plot each feature with its important time steps
         for actual_feature, values in feature_dict.items():
@@ -89,21 +76,21 @@ class LimeExplainer(BaseExplainer):
             time_steps = [v[0] for v in values]
             actual_values = [v[1] for v in values]
             importances = [v[2] for v in values]
-        
-            plt.plot(range(sequence_length), sequences[0][:, selected_features.index(actual_feature)], label=f'{actual_feature}')
+    
+            plt.plot(range(sequence_length), original_sequences[0][:, selected_features.index(actual_feature)], label=f'{actual_feature}')
             plt.scatter(time_steps, actual_values, color='red', zorder=5, label='LIME Important Points')
-        
+    
             # Annotate the points with their importance and actual value
             for i, (x, y) in enumerate(zip(time_steps, actual_values)):
                 plt.annotate(f'Value: {y:.3f}\nImp: {importances[i]:.3f}', (x, y), textcoords="offset points", xytext=(0,10), ha='center', color='blue')
-        
+    
             plt.xlabel('Time Step')
             plt.ylabel('Feature Value')
             plt.title(f'Feature: {actual_feature}')
             plt.legend(loc='upper right')
             plt.grid(True)
             plt.show()
-        
+    
             # Print the detailed information about the important points
             print(f'\nFeature: {actual_feature} - Detailed Information')
             for time_step, value, importance in values:

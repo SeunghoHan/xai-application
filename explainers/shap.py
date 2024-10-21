@@ -26,193 +26,237 @@ class PyTorchLSTMModelWrapper:
             return self.model(x).cpu().numpy().flatten()
 
 class ShapExplainer:
-    def __init__(self, model, train_sequences, sequence_length, input_size, selected_features, device):
+    def __init__(self, model, train_sequences, sequence_length, input_size, selected_features, device, num_train_sample=100):
         self.model = model
         self.train_sequences = train_sequences
         self.sequence_length = sequence_length
         self.input_size = input_size
         self.selected_features = selected_features
         self.device = device
-        self.explainer = shap.KernelExplainer(PyTorchLSTMModelWrapper(model, sequence_length, input_size, device), train_sequences[:100].reshape(100, -1))
+        # self.explainer = shap.KernelExplainer(PyTorchLSTMModelWrapper(model, sequence_length, input_size, device), train_sequences[:num_train_sample].reshape(num_train_sample, -1), noise=0.1)
+
+        # OOM 문제로 KernelExplainer -> DeepExplainer 로 변경
+        background_data = torch.tensor(train_sequences[:num_train_sample], dtype=torch.float32).to(self.device)
+        self.explainer = shap.DeepExplainer(model, background_data)
+
     
-    def explain(self, eval_sequences, num_samples=1, nsamples=500):
+    def explain_DeepExplainer(self, eval_sequences, num_samples=1):
+        self.model.train()
+        
+        random_samples = eval_sequences[np.random.choice(len(eval_sequences), num_samples, replace=False)]
+        random_samples_tensor = torch.tensor(random_samples, dtype=torch.float32).to(self.device)
+        shap_values = self.explainer.shap_values(random_samples_tensor, check_additivity=False)
+        
+        return shap_values, random_samples
+
+    def explain(self, eval_sequences, num_samples=1, nsamples=500, batch_size=1):
         random_samples = eval_sequences[np.random.choice(len(eval_sequences), num_samples, replace=False)].reshape(num_samples, -1)
         shap_values = self.explainer.shap_values(random_samples, nsamples=nsamples)
         return shap_values, random_samples
-
-    def sequence_to_dataframe(self, sequence, feature_names):
+    
+    def sequence_to_dataframe(self, sequence):
         reshaped_sequence = sequence.reshape(self.sequence_length, self.input_size)
-        return pd.DataFrame(reshaped_sequence, columns=feature_names[:self.input_size])
+        return pd.DataFrame(reshaped_sequence, columns=self.selected_features[:self.input_size])
 
-    def plot_summary(self, shap_values, sample_df, feature_names):
+    def plot_summary(self, shap_values, sample_df):
         print("Summary plot")
-        shap.summary_plot(shap_values.reshape(self.sequence_length, -1), 
+
+        feature_names = self.selected_features
+        shap_values = np.mean(shap_values, axis=-1) 
+        shap.summary_plot(shap_values, 
                           sample_df, 
-                          feature_names=feature_names[:self.input_size * self.sequence_length], 
+                          feature_names=feature_names,
                           show=True)
+    
+    def plot_force(self, shap_values, sample_df, target_idx):
+        print("Force plot (target output index: {})".format(target_idx))
 
-    def plot_force(self, shap_values, sample_df, feature_names, sample_index):
-        print("Force plot")
+        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+        selected_shap_values = shap_values[ :, :, target_idx]  
+        base_value = self.explainer.expected_value[target_idx] if isinstance(self.explainer.expected_value, (list, np.ndarray)) else self.explainer.expected_value
+    
         shap_values_explanation = shap.Explanation(
-            values=shap_values.flatten(), 
-            base_values=np.repeat(self.explainer.expected_value, self.sequence_length * self.input_size), 
-            data=sample_df.values.flatten(), 
-            feature_names=feature_names[:self.sequence_length * self.input_size]
+            values=selected_shap_values.flatten(),  
+            base_values=base_value,  
+            data=sample_df.values.flatten(),  
+            feature_names=feature_names[:self.input_size * self.sequence_length]
         )
+    
+        # Force Plot 생성
         shap.force_plot(
-            base_value=self.explainer.expected_value, 
-            shap_values=shap_values_explanation.values, 
-            features=shap_values_explanation.data, 
-            feature_names=shap_values_explanation.feature_names,
-            matplotlib=True
+            base_value=base_value,  # 모델의 기본 예측값
+            shap_values=shap_values_explanation.values,  # 각 feature의 SHAP 값
+            features=shap_values_explanation.data,  # 각 feature의 실제 값
+            feature_names=shap_values_explanation.feature_names,  # feature 이름
+            matplotlib=True, 
+            contribution_threshold=0.02
         )
 
-    def plot_waterfall(self, shap_values, sample_df, feature_names, sample_index):
-        print("Waterfall plot")
+    def plot_waterfall(self, shap_values, sample_df, target_idx):
+        print("Waterfall plot (target output index: {})".format(target_idx))
+        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+        selected_shap_values = shap_values[ :, :, target_idx]  
+        base_value = self.explainer.expected_value[target_idx] if isinstance(self.explainer.expected_value, (list, np.ndarray)) else self.explainer.expected_value
+    
         shap_values_explanation = shap.Explanation(
-            values=shap_values.flatten(), 
-            base_values=self.explainer.expected_value, 
-            data=sample_df.values.flatten(), 
+            values=selected_shap_values.flatten(),  
+            base_values=base_value,  
+            data=sample_df.values.flatten(),  
             feature_names=feature_names[:self.input_size * self.sequence_length]
         )
-        shap.waterfall_plot(shap_values_explanation)
+    
+        # Waterfall Plot 생성
+        shap.waterfall_plot(shap_values_explanation, max_display=25)
+    
+    def plot_dependence(self, shap_values, sample_df, target_idx):
+        print("Dependence plot (target output index: {})".format(target_idx))
 
-    def plot_dependence(self, shap_values, sample_df, sample_index):
-        print("Dependence plot")
+        reshaped_shap_values = shap_values[:, :, target_idx]
         for feature in self.selected_features:
-            feature_name = f"{feature}_0"
-            shap.dependence_plot(feature_name, shap_values.reshape(self.sequence_length, -1), sample_df)
-
-    def plot_decision(self, shap_values, sample_df, feature_names, sample_index):
-        print("Decision plot")
+            shap.dependence_plot(feature, reshaped_shap_values, sample_df)
+    
+    def plot_decision(self, shap_values, sample_df, target_idx):
+        print("Decision plot (target output index: {})".format(target_idx))
+        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+        selected_shap_values = shap_values[:, :, target_idx].flatten()  
+        base_value = self.explainer.expected_value[target_idx] if isinstance(self.explainer.expected_value, (list, np.ndarray)) else self.explainer.expected_value
+        
         shap_values_explanation = shap.Explanation(
-            values=shap_values.flatten(), 
-            base_values=self.explainer.expected_value, 
+            values=selected_shap_values, 
+            base_values=np.repeat(base_value, selected_shap_values.shape),  
             data=sample_df.values.flatten(), 
             feature_names=feature_names[:self.input_size * self.sequence_length]
         )
-        shap.decision_plot(self.explainer.expected_value, shap_values_explanation.values, feature_names=feature_names[:self.input_size * self.sequence_length])
-
-    def plot_scatter(self, shap_values, sample_df, feature_names, sample_index):
-        print("Scatter plot")
-        shap_values_explanation = shap.Explanation(
-            values=shap_values.reshape(self.sequence_length, -1), 
-            base_values=np.repeat(self.explainer.expected_value, self.sequence_length), 
-            data=sample_df.values, 
-            feature_names=feature_names[:self.input_size]
+        
+        shap.decision_plot(
+            base_value=base_value, 
+            shap_values=shap_values_explanation.values,  
+            feature_names=feature_names[:self.input_size * self.sequence_length], 
+            feature_display_range=slice(None, 25)
         )
+
+    def plot_scatter(self, shap_values, sample_df, target_idx):
+        print(f"Scatter plot (target output index: {target_idx})")
+        
+        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+        selected_shap_values = shap_values[:, :, target_idx]
+
+        shap_values_explanation = shap.Explanation(
+            values=selected_shap_values, 
+            base_values=np.repeat(self.explainer.expected_value, self.sequence_length),  
+            data=sample_df.values, 
+            feature_names=feature_names[:self.input_size * self.sequence_length]  
+        )
+    
         for feature in self.selected_features:
             feature_name = f"{feature}_0"
             feature_index = feature_names.index(feature_name)
-            shap.plots.scatter(shap_values_explanation[:, feature_index])
-
-    def plot_bar(self, shap_values, sample_df, feature_names, sample_index):
+            shap.plots.scatter(shap_values_explanation[feature_index])
+    
+    def plot_bar(self, shap_values, sample_df):
         print("Bar plot")
+        
+        feature_names = self.selected_features
+        selected_shap_values = np.mean(shap_values, axis=-1) 
+        
         shap_values_explanation = shap.Explanation(
-            values=shap_values.reshape(self.sequence_length, -1), 
-            base_values=self.explainer.expected_value, 
+            values=selected_shap_values, 
+            base_values=np.mean(self.explainer.expected_value),  
             data=sample_df.values, 
-            feature_names=feature_names[:self.input_size * self.sequence_length]
+            feature_names=feature_names  
         )
+        
         shap.plots.bar(shap_values_explanation)
-
-    def plot_beeswarm(self, shap_values, sample_df, feature_names, sample_index):
-        print("Beaswarm plot")
+    
+    def plot_beeswarm(self, shap_values, sample_df):
+        print("Beeswarm plot")
+        
+        feature_names = self.selected_features
+        selected_shap_values = np.mean(shap_values, axis=-1) 
+        
         shap_values_explanation = shap.Explanation(
-            values=shap_values.reshape(self.sequence_length, -1), 
-            base_values=self.explainer.expected_value, 
+            values=selected_shap_values, 
+            base_values=np.mean(self.explainer.expected_value),  
             data=sample_df.values, 
-            feature_names=feature_names[:self.input_size * self.sequence_length]
+            feature_names=feature_names  
         )
+        
         shap.plots.beeswarm(shap_values_explanation)
-
-    def plot_heatmap(self, shap_values, sample_df, feature_names, sample_index):
-        print("Heatamp plot")
+    
+    def plot_heatmap(self, shap_values, sample_df):
+        print("Heatmap plot")
+        
+        feature_names = self.selected_features
+        selected_shap_values = np.mean(shap_values, axis=-1) 
+        
         shap_values_explanation = shap.Explanation(
-            values=shap_values.reshape(self.sequence_length, -1), 
-            base_values=self.explainer.expected_value, 
+            values=selected_shap_values, 
+            base_values=np.mean(self.explainer.expected_value),  
             data=sample_df.values, 
-            feature_names=feature_names[:self.input_size * self.sequence_length]
+            feature_names=feature_names  
         )
+
         shap.plots.heatmap(shap_values_explanation)
 
-    def plot_partial_dependence(self, shap_values, sample_df, feature_name, sample_index):
-        print("Partial dependence plot")
-        shap_values_explanation = shap.Explanation(
-            values=shap_values.flatten(), 
-            base_values=self.explainer.expected_value, 
-            data=sample_df.values.flatten(), 
-            feature_names=[feature_name]
-        )
-        if feature_name in sample_df.columns:
-            shap.dependence_plot(feature_name, shap_values.reshape(self.sequence_length, self.input_size), sample_df)
+    def plot_partial_dependence(self, shap_values, sample_df, target_feature_idx, target_idx):
+        print("Partial Dependence Plot (feature: {}, target output index)".format(self.selected_features[target_feature_idx], target_idx))
+    
+        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+        selected_shap_values = shap_values[:, :, target_idx]
+        
+        if self.selected_features[target_feature_idx] in sample_df.columns:
+            # Partial Dependence Plot 생성
+            shap.dependence_plot(target_feature_idx, selected_shap_values, sample_df)
         else:
-            print(f"Feature {feature_name} not found in sample_df columns: {sample_df.columns}")
+            print(f"Feature {target_feature_name} not found in sample_df columns: {sample_df.columns}")
+    
 
-    def plot_interaction(self, shap_values, sample_df, sample_index):
-        print("Interaction plot")
-        """
-        Interaction plot to show how two features interact and affect the predictions.
-        """
-        # Calculate interaction values using SHAP
-        interaction_values = self.explainer.shap_interaction_values(sample_df)
-        
-        # Select two features to plot their interaction
-        feature_1 = self.selected_features[0]
-        feature_2 = self.selected_features[1]
-
-        # Plot the interaction between the two features
-        shap.dependence_plot(
-            (self.selected_features.index(feature_1), self.selected_features.index(feature_2)), 
-            interaction_values[sample_index], 
-            sample_df
-        )
-
-    def visualize_all_one_sample(self, shap_values, eval_sequences):
+    def visualize_all_one_sample(self, shap_values, eval_sequences, target_f_idx1, target_f_idx2, target_idx=0):
+        # target_f_idx1: for PDP
+        # target_f_idx1, target_f_idx2: interaction plot
+        # target_idx: target output index
         shap.initjs()
-        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
-
-        for i in range(len(eval_sequences)):
-            sample_df = self.sequence_to_dataframe(eval_sequences[i], feature_names)
-            self.plot_summary(shap_values[i], sample_df, feature_names)
-            self.plot_force(shap_values[i], sample_df, feature_names, i)
-            self.plot_waterfall(shap_values[i], sample_df, feature_names, i)
-            self.plot_dependence(shap_values[i], sample_df, i)
-            self.plot_decision(shap_values[i], sample_df, feature_names, i)
-            self.plot_scatter(shap_values[i], sample_df, feature_names, i)
-            self.plot_bar(shap_values[i], sample_df, feature_names, i)
-            self.plot_beeswarm(shap_values[i], sample_df, feature_names, i)
-            self.plot_heatmap(shap_values[i], sample_df, feature_names, i)
-            self.plot_partial_dependence(shap_values[i], sample_df, self.selected_features[0], i)
+    
+        sample_df = self.sequence_to_dataframe(eval_sequences)
         
-    def visualize_all_multiple_samples(self, shap_values, eval_sequences):
+        self.plot_summary(shap_values, sample_df)
+        self.plot_force(shap_values, sample_df, target_idx)
+        self.plot_waterfall(shap_values, sample_df, target_idx)
+        self.plot_dependence(shap_values, sample_df, target_idx)
+        self.plot_decision(shap_values, sample_df, target_idx)
+        self.plot_scatter(shap_values, sample_df, target_idx)
+        self.plot_bar(shap_values, sample_df)
+        self.plot_beeswarm(shap_values, sample_df)
+        self.plot_heatmap(shap_values, sample_df)
+        self.plot_partial_dependence(shap_values, sample_df, target_f_idx1, target_idx)
+    
+    def visualize_all_multiple_samples(self, shap_values, eval_sequences, target_f_idx1, target_f_idx2, target_idx=0):
         """
-        여러 샘플에 대한 시각화를 수행하는 함수.
+            여러 샘플에 대한 시각화를 수행하는 함수.
         """
         shap.initjs()
-        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+        # feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
 
         # 여러 샘플에 대해 SHAP 값을 평균 계산
         shap_values_mean = np.mean(np.abs(shap_values), axis=0)
         eval_sequences_mean = np.mean(eval_sequences, axis=0)
-        sample_df = self.sequence_to_dataframe(eval_sequences_mean, feature_names)
-        
-        # 여러 샘플에 대한 시각화
-        self.plot_summary(shap_values_mean, sample_df, feature_names)
-        self.plot_force(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_waterfall(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_dependence(shap_values_mean, sample_df, 0)
-        self.plot_decision(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_scatter(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_bar(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_beeswarm(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_heatmap(shap_values_mean, sample_df, feature_names, 0)
-        self.plot_partial_dependence(shap_values_mean, sample_df, self.selected_features[0], 0)
+        sample_df = self.sequence_to_dataframe(eval_sequences_mean)
 
+        self.plot_summary(shap_values_mean, sample_df)
+        self.plot_force(shap_values_mean, sample_df, target_idx)
+        self.plot_waterfall(shap_values_mean, sample_df, target_idx)
+        self.plot_dependence(shap_values_mean, sample_df, target_idx)
+        self.plot_decision(shap_values_mean, sample_df, target_idx)
+        self.plot_scatter(shap_values_mean, sample_df, target_idx)
+        self.plot_bar(shap_values_mean, sample_df)
+        self.plot_beeswarm(shap_values_mean, sample_df)
+        self.plot_heatmap(shap_values_mean, sample_df)
+        self.plot_partial_dependence(shap_values_mean, sample_df, target_f_idx1, target_idx)
 
-    def explain_correlation(self, eval_sequences, num_samples=1, nsamples=500):
+    def explain_correlation(self, eval_sequences, num_samples=1):
         random_samples = eval_sequences[np.random.choice(len(eval_sequences), num_samples, replace=False)]
-        shap_values = self.explainer.shap_values(random_samples.reshape(num_samples, -1), nsamples=nsamples)
+        random_samples_tensor = torch.tensor(random_samples, dtype=torch.float32).to(self.device)
+        shap_values = self.explainer.shap_values(random_samples.reshape(num_samples, -1))
         return shap_values, random_samples
 
     def plot_dependence_correlation(self, shap_values, sample_df, target_feature, interaction_feature=None):
@@ -224,15 +268,14 @@ class ShapExplainer:
         print(f"Dependence plot for {target_feature}")
     
         # Feature 이름 확인 및 변환
-        feature_names = sample_df.columns.tolist()  # 샘플 데이터프레임의 컬럼명을 feature 이름으로 사용
+        feature_names = self.selected_features # 샘플 데이터프레임의 컬럼명을 feature 이름으로 사용
     
         if target_feature not in feature_names:
             raise ValueError(f"Could not find feature named: {target_feature}")
     
-        if interaction_feature and interaction_feature not in feature_names:
+        if interaction_feature  not in feature_names:
             raise ValueError(f"Could not find interaction feature named: {interaction_feature}")
-    
-        # reshape shap_values to match the shape of sample_df
+
         if shap_values.shape[0] != sample_df.shape[0]:
             shap_values = shap_values.reshape(sample_df.shape[0], -1)
     
@@ -254,7 +297,7 @@ class ShapExplainer:
 
     def plot_shap_value_correlation_multiple_samples(self, shap_values, feature_names):
         """
-        여러 샘플에 대한 SHAP 값들의 상관관계를 분석하는 함수.
+            여러 샘플에 대한 SHAP 값들의 상관관계를 분석하는 함수.
         """
         # 샘플 전체의 SHAP 값을 평균으로 변환
         shap_values_reshaped = np.mean(np.abs(shap_values), axis=0).reshape(len(feature_names), -1)
@@ -269,30 +312,26 @@ class ShapExplainer:
         plt.show()
 
     def visualize_correlation(self, shap_values, eval_sequences, target_feature_1, target_feature_2):
-        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
-    
-        # eval_sequences의 크기가 올바르므로, 추가적인 reshape는 필요하지 않습니다.
-        for i in range(len(eval_sequences)):
-            print(f"Processing sequence {i} of eval_sequences...")
-    
-            # 데이터 확인 및 시각화
-            try:
-                sample_df = self.sequence_to_dataframe(eval_sequences[i], feature_names)
-            except ValueError as e:
-                print(f"Error with sequence {i}: {e}")
-                continue  # 오류가 있는 시퀀스는 스킵
-    
-            self.plot_summary(shap_values[i], sample_df, feature_names)
-            self.plot_dependence_correlation(shap_values[i], sample_df, 
-                                             target_feature=target_feature_1, 
-                                             interaction_feature=target_feature_2)  
-            self.plot_shap_value_correlation(shap_values[i])  
+        # feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
+
+        sample_df = self.sequence_to_dataframe(eval_sequences)
+        
+        # 24개 아웃풋에 대해서 평균으로 해서 출력에 대한 feature 상관관계 분석
+        shap_values = np.mean(shap_values, axis=-1) 
+        
+        # self.plot_dependence_correlation(shap_values, sample_df, 
+        #                                  target_feature=target_feature_1, 
+        #                                  interaction_feature=target_feature_2)  
+        
+        self.plot_shap_value_correlation(shap_values)  
 
 
-    def plot_shap_value_correlation_multiple_samples(self, shap_values, feature_names):
+    def plot_shap_value_correlation_multiple_samples(self, shap_values):
         """
         여러 샘플에 대한 SHAP 값들의 상관관계를 분석하는 함수.
         """
+        feature_names = self.selected_features
+        
         # 샘플 전체의 SHAP 값을 평균으로 변환
         shap_values_reshaped = np.mean(np.abs(shap_values), axis=0).reshape(len(feature_names), -1)
     
@@ -305,28 +344,19 @@ class ShapExplainer:
         plt.title("SHAP Value Correlation Matrix (Feature Contribution)")
         plt.show()
 
-    def plot_summary2(self, shap_values, sample_df, feature_names):
-        print("Summary plot")
-        shap.summary_plot(shap_values, sample_df, feature_names=feature_names, show=True)
-
     def visualize_correlation_multiple_samples(self, shap_values, eval_sequences):
-        feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
 
         # shap_values의 크기를 확인하고 필요 시 reshape
         shap_values_mean = np.mean(np.abs(shap_values), axis=0)
+        shap_values_mean = np.mean(shap_values_mean, axis=-1) 
         
         # 확인: shap_values_mean의 크기가 올바른지 출력
         print(f"shap_values_mean shape: {shap_values_mean.shape}")
         
-        # 샘플 수에 맞게 reshape: eval_sequences.shape[1]은 feature의 수를 나타냄
         shap_values_reshaped = shap_values_mean.reshape(self.sequence_length, self.input_size)
 
         # feature_names에 맞게 sample_df 생성
         sample_df = pd.DataFrame(shap_values_reshaped, columns=self.selected_features)
         
-        # 여러 샘플에 대한 summary plot 호출
-        self.plot_summary2(shap_values_reshaped, sample_df, self.selected_features)
-
         # SHAP 값들의 상관관계 행렬 계산 및 시각화
-        self.plot_shap_value_correlation_multiple_samples(shap_values, self.selected_features)
-
+        self.plot_shap_value_correlation_multiple_samples(shap_values)

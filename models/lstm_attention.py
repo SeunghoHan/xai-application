@@ -6,7 +6,7 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         # Attention layer to calculate attention weights
         self.attention_layer = nn.Linear(hidden_size, hidden_size)
-        self.v = nn.Parameter(torch.rand(hidden_size))  # Learnable attention vector
+        self.v = nn.Parameter(torch.randn(hidden_size) * 0.1)  # Improved initialization
 
     def forward(self, lstm_output):
         attention_scores = torch.tanh(self.attention_layer(lstm_output))  # (batch_size, sequence_length, hidden_size)
@@ -16,6 +16,36 @@ class Attention(nn.Module):
         # context vector: weighted sum of LSTM outputs
         context_vector = torch.sum(attention_weights * lstm_output, dim=1)  # (batch_size, hidden_size)
         return context_vector, attention_weights
+
+
+class AttentionLSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, output_size=24, dropout=0.3):
+        super(AttentionLSTMModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        # LSTM layer with dropout applied if num_layers > 1
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout if num_layers > 1 else 0)
+        
+        # Attention mechanism
+        self.attention = Attention(hidden_size)
+        
+        # Fully connected layer for output prediction
+        self.fc = nn.Linear(hidden_size, output_size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # LSTM forward pass
+        lstm_output, _ = self.lstm(x)  # lstm_output: (batch_size, sequence_length, hidden_size)
+        
+        # Apply attention mechanism
+        context_vector, attn_weights = self.attention(lstm_output)
+
+        # Pass through dropout and fully connected layer
+        output = self.fc(self.dropout(context_vector))  # (batch_size, output_size)
+
+        return output, attn_weights.squeeze(-1)
+
 
 class LSTMWithAttention(nn.Module):
     def __init__(self, input_size, hidden_size=256, num_layers=2, output_size=24, dropout=0.2):

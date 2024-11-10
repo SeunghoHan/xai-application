@@ -1,18 +1,28 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
-class GradCAMExplainer:
-    def __init__(self, model, device):
+import matplotlib.pyplot as plt
+
+
+from .base_explainer import BaseExplainer
+
+class GradCAMExplainer(BaseExplainer):
+    def __init__(self, model, device, sequences, sequence_length, input_size, selected_features):
         """
         Grad-CAM을 사용하여 모델의 타임스텝 기여도를 계산하는 클래스
         
         Args:
             model: 학습된 LSTM 기반 모델
             device: 모델이 할당된 장치 (cpu 또는 cuda)
+            sequences: 사용된 데이터 시퀀스 (train 또는 eval data)
+            sequence_length: 시퀀스 길이
+            input_size: feature 개수
+            selected_features: 사용된 feature의 이름 리스트
         """
-        self.model = model
-        self.device = device
+        super().__init__(model, device, sequences, sequence_length, input_size, selected_features)
+
 
     def compute_grad_cam(self, data_point, target_index=None):
         """
@@ -35,7 +45,7 @@ class GradCAMExplainer:
         def hook_fn(grad):
             gradients.append(grad)
         
-        output = self.model(data_tensor)
+        output, _ = self.model(data_tensor)
         if target_index is not None:
             output = output[:, target_index]
         
@@ -74,7 +84,7 @@ class GradCAMExplainer:
         def hook_fn(grad):
             gradients.append(grad)
         
-        output = self.model(data_tensor)
+        output, _ = self.model(data_tensor)
         if target_index is not None:
             output = output[:, target_index]
         
@@ -152,3 +162,78 @@ class GradCAMExplainer:
             plt.legend(loc='upper right')
             plt.tight_layout()
             plt.show()
+
+
+    def compute_grad_cam_per_feature(self, data_point, target_index=None):
+        """
+        각 타임스텝과 feature별 기여도를 계산하는 Grad-CAM
+        
+        Args:
+            data_point: 시계열 데이터 포인트 (sequence_length, input_size)
+            target_index: 목표 예측값의 인덱스 (분류 모델에서 사용 가능)
+        
+        Returns:
+            Grad-CAM으로 계산된 각 타임스텝과 각 feature의 기여도 맵 (sequence_length, input_size)
+        """
+        self.model.train()
+        
+        data_tensor = torch.tensor(data_point, dtype=torch.float32).unsqueeze(0).to(self.device)
+        data_tensor.requires_grad_(True)
+
+        gradients = []
+        
+        def hook_fn(grad):
+            gradients.append(grad)
+        
+        output, _ = self.model(data_tensor)
+        if target_index is not None:
+            output = output[:, target_index]
+        
+        self.model.zero_grad()
+        
+        handle = data_tensor.register_hook(hook_fn)
+        output.backward(torch.ones_like(output))
+        handle.remove()
+
+        gradients = gradients[0].cpu().detach().numpy().squeeze()
+        
+        self.model.eval()
+        
+        return gradients  # (sequence_length, input_size)
+
+    def extract_important_features(self, num_samples=50, top_n=3):
+        """
+        여러 샘플에 대해 Grad-CAM을 수행하고, 중요도가 큰 상위 N개의 feature를 추출합니다.
+        
+        Args:
+            num_samples: Grad-CAM을 적용할 샘플 수
+            top_n: 중요도가 높은 상위 feature 수
+        
+        Returns:
+            모델 예측에 많은 영향을 미치는 상위 feature 리스트
+        """
+        feature_importance = {feature: 0 for feature in self.selected_features}
+
+        indices = np.random.choice(len(self.sequences), num_samples, replace=False)
+        selected_sequences = self.sequences[indices]
+
+        print("Extracting important features with Grad-CAM...")
+        
+        for i, data_point in enumerate(tqdm(selected_sequences, desc="Processing samples"), start=1):
+            grad_cam_weights = self.compute_grad_cam_per_feature(data_point)
+            
+            # 타임스텝과 feature별로 평균 기여도를 계산하여 feature 중요도에 반영
+            avg_importance_per_feature = np.mean(np.abs(grad_cam_weights), axis=0)
+            
+            for feature_idx, feature_name in enumerate(self.selected_features):
+                feature_importance[feature_name] += avg_importance_per_feature[feature_idx]
+
+        # 중요도가 큰 상위 N개 feature 추출
+        top_features = sorted(feature_importance.items(), key=lambda item: item[1], reverse=True)[:top_n]
+        top_features_dict = {feature: importance for feature, importance in top_features}
+        
+        print(f"Top {top_n} important features based on SHAP values:")
+        for rank, (feature, importance) in enumerate(top_features, start=1):
+            print(f"Top {rank}: {feature} (Importance: {importance})")
+        
+        return top_features_dict

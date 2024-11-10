@@ -6,28 +6,26 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-class PyTorchLSTMModelWrapper:
-    def __init__(self, model, sequence_length, input_size, device):
+class ModelOutputWrapper(torch.nn.Module):
+    """Wrapper to get only the main output from a model with multiple outputs (e.g., predictions and attention weights)."""
+    def __init__(self, model):
+        super(ModelOutputWrapper, self).__init__()
         self.model = model
-        self.sequence_length = sequence_length
-        self.input_size = input_size
-        self.device = device
-
-    def __call__(self, x):
-        x = x.reshape((x.shape[0], self.sequence_length, self.input_size))
-        x = torch.tensor(x, dtype=torch.float32).to(self.device)
-        with torch.no_grad():
-            return self.model(x).cpu().numpy()
-            
-    def predict(self, x):
-        x = x.reshape((x.shape[0], self.sequence_length, self.input_size))
-        x = torch.tensor(x, dtype=torch.float32).to(self.device)
-        with torch.no_grad():
-            return self.model(x).cpu().numpy().flatten()
+    
+    def forward(self, *args, **kwargs):
+        output = self.model(*args, **kwargs)
+        # Assuming model output is a tuple (main_output, attention_weights)
+        if isinstance(output, tuple):
+            main_output = output[0]  # Get only the main prediction output
+        else:
+            main_output = output
+        return main_output
 
 class ShapExplainer:
     def __init__(self, model, train_sequences, sequence_length, input_size, selected_features, device, num_train_sample=100):
-        self.model = model
+        wrapped_model = ModelOutputWrapper(model).to(device)
+        self.model = wrapped_model
+        # self.model = model
         self.train_sequences = train_sequences
         self.sequence_length = sequence_length
         self.input_size = input_size
@@ -36,8 +34,9 @@ class ShapExplainer:
         # self.explainer = shap.KernelExplainer(PyTorchLSTMModelWrapper(model, sequence_length, input_size, device), train_sequences[:num_train_sample].reshape(num_train_sample, -1), noise=0.1)
 
         # OOM 문제로 KernelExplainer -> DeepExplainer 로 변경
-        background_data = torch.tensor(train_sequences[:num_train_sample], dtype=torch.float32).to(self.device)
-        self.explainer = shap.DeepExplainer(model, background_data)
+        background_data = torch.tensor(self.train_sequences[:num_train_sample], 
+                                       dtype=torch.float32).to(self.device)
+        self.explainer = shap.DeepExplainer(self.model, background_data)
 
     
     def explain_DeepExplainer(self, eval_sequences, num_samples=1):
@@ -295,22 +294,6 @@ class ShapExplainer:
         plt.title("Correlation of SHAP Values (Feature Contribution)")
         plt.show()
 
-    def plot_shap_value_correlation_multiple_samples(self, shap_values, feature_names):
-        """
-            여러 샘플에 대한 SHAP 값들의 상관관계를 분석하는 함수.
-        """
-        # 샘플 전체의 SHAP 값을 평균으로 변환
-        shap_values_reshaped = np.mean(np.abs(shap_values), axis=0).reshape(len(feature_names), -1)
-    
-        # SHAP 값 간 상관 행렬 계산
-        shap_corr = np.corrcoef(shap_values_reshaped)
-    
-        # 상관 행렬 시각화
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(shap_corr, annot=True, cmap='coolwarm', xticklabels=feature_names, yticklabels=feature_names, vmin=-1, vmax=1)
-        plt.title("SHAP Value Correlation Matrix (Feature Contribution)")
-        plt.show()
-
     def visualize_correlation(self, shap_values, eval_sequences, target_feature_1, target_feature_2):
         # feature_names = [f"{feature}_{i}" for i in range(self.sequence_length) for feature in self.selected_features]
 
@@ -344,7 +327,7 @@ class ShapExplainer:
         plt.title("SHAP Value Correlation Matrix (Feature Contribution)")
         plt.show()
 
-    def visualize_correlation_multiple_samples(self, shap_values, eval_sequences):
+    def _visualize_correlation_multiple_samples(self, shap_values):
 
         # shap_values의 크기를 확인하고 필요 시 reshape
         shap_values_mean = np.mean(np.abs(shap_values), axis=0)
@@ -360,3 +343,61 @@ class ShapExplainer:
         
         # SHAP 값들의 상관관계 행렬 계산 및 시각화
         self.plot_shap_value_correlation_multiple_samples(shap_values)
+
+    def visualize_correlation_multiple_samples(self, shap_values):
+        """
+        여러 샘플에 대한 SHAP 값들의 상관관계를 분석하는 함수.
+        개별 샘플에 대해 상관 행렬을 구하고, 그 행렬들의 평균을 사용합니다.
+        """
+        # 개별 샘플 상관 행렬을 저장할 리스트
+        individual_corrs = []
+        valid_samples = 0  # 유효한 샘플 개수
+    
+        for sample_shap_values in shap_values:
+            # 개별 샘플을 (sequence_length, input_size)로 reshape
+            # 24개 아웃풋에 대해서 평균으로 해서 출력에 대한 feature 상관관계 분석
+            sample_shap_values = np.mean(sample_shap_values, axis=-1) 
+            sample_shap_values_reshaped = sample_shap_values.reshape(self.sequence_length, 
+                                                                     self.input_size)
+            
+            # 상관 행렬 계산
+            sample_corr = np.corrcoef(sample_shap_values_reshaped, rowvar=False)
+            individual_corrs.append(sample_corr)
+            valid_samples += 1  # 유효 샘플 카운트 증가
+        
+    
+        # 유효한 상관 행렬의 평균 계산
+        if valid_samples > 0:
+            avg_corr = np.mean(individual_corrs, axis=0)
+    
+            # 상관 행렬 시각화
+            plt.figure(figsize=(10, 8))
+            sns.heatmap(avg_corr, annot=True, cmap='coolwarm', xticklabels=self.selected_features, yticklabels=self.selected_features, vmin=-1, vmax=1)
+            plt.title("Average SHAP Value Correlation Matrix (Feature Contribution)")
+            plt.show()
+        else:
+            print("No valid samples for correlation calculation.")
+
+
+    def extract_important_features(self, shap_values, top_n=5):
+        """
+        여러 샘플에 대해 SHAP을 수행한 후 중요도가 높은 상위 N개의 feature를 추출합니다.
+        """
+        # 모든 샘플에 대해 SHAP 값의 절대값 평균 계산
+        shap_values_mean = np.mean(np.abs(shap_values[0]), axis=0)
+        feature_importance = {feature: 0 for feature in self.selected_features}
+        
+        # 각 feature의 중요도를 누적
+        for i, feature in enumerate(self.selected_features):
+            feature_importance[feature] = np.mean(shap_values_mean[:, i])
+
+        # 상위 top_n feature 추출
+        top_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        top_features_dict = {feature: importance for feature, importance in top_features}
+        
+        print(f"Top {top_n} important features based on SHAP values:")
+        for rank, (feature, importance) in enumerate(top_features, start=1):
+            print(f"Top {rank}: {feature} (Importance: {importance})")
+        
+        return top_features_dict
+        

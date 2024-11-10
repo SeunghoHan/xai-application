@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
+from collections import Counter
+from tqdm import tqdm
 
 from .base_explainer import BaseExplainer
 
@@ -19,9 +21,9 @@ class AttentionExplainer(BaseExplainer):
         output, attention_weights = self.model(data_tensor)
         attention_weights = attention_weights.squeeze().cpu().detach().numpy()
         
-        return attention_weights, output.item()
+        return attention_weights, output # output.item()
     
-    def visualize_attention(self, data_point, n=5):
+    def visualize_attention(self, data_point=None, n=5):
         """
         Visualize the attention weights along with input features for a specific data point
         and print the feature values at the top n attention-weighted time steps. The top n
@@ -31,6 +33,9 @@ class AttentionExplainer(BaseExplainer):
             data_point: 입력 데이터 포인트 (sequence_length, input_size)
             n: attention 가중치가 가장 큰 상위 n개의 타임스텝에 대해 출력할 feature 값 수
         """
+        if data_point == None:
+            data_point = self.sequences[np.random.choice(len(self.sequences))]
+        
         attention_weights, prediction = self.explain(data_point)
         
         # 시각화 설정
@@ -86,7 +91,7 @@ class AttentionExplainer(BaseExplainer):
                 
     
     def analyze_attention_distribution(self, num_samples=300):
-        """Analyze the attention weight distribution across multiple samples."""
+        """Analyze the attention weight distribution across multiple samples"""
         attention_weights_list = []
         
         # 샘플 몇 개를 선택하여 분석
@@ -114,8 +119,11 @@ class AttentionExplainer(BaseExplainer):
         plt.legend()
         plt.show()
 
-    def visualize_attention_heatmap(self, data_point):
+    def visualize_attention_heatmap(self, data_point=None):
         """Attention Heatmap Visualization."""
+        if data_point == None:
+            data_point = self.sequences[np.random.choice(len(self.sequences))]
+            
         attention_weights, prediction = self.explain(data_point)
 
         # Attention 가중치를 Heatmap으로 시각화
@@ -129,7 +137,7 @@ class AttentionExplainer(BaseExplainer):
 
         print(f"Prediction for the data point: {prediction}")
     
-    def visualize_cumulative_attention(self, data_point, num_points=7):
+    def visualize_cumulative_attention(self, data_point=None, num_points=7):
         """
         Cumulative Attention Weights Visualization with important points.
         
@@ -137,6 +145,8 @@ class AttentionExplainer(BaseExplainer):
             data_point: 입력 데이터 포인트
             num_points: 표시할 기울기 변화가 큰 포인트의 개수
         """
+        if data_point == None:
+            data_point = self.sequences[np.random.choice(len(self.sequences))]
         attention_weights, prediction = self.explain(data_point)
 
         # Attention 가중치의 누적 합 계산
@@ -177,3 +187,43 @@ class AttentionExplainer(BaseExplainer):
             print(f"Top {idx} - Time step {step}: Gradient Change = {gradient[step-1]}")  # 기울기 변화값 출력
             for i, feature_name in enumerate(feature_names):
                 print(f"  {feature_name}: {sequence_np[step, i]}")  # 해당 타임스텝의 feature 값 출력
+
+
+    def extract_important_features(self, num_samples=100, top_n=5):
+        """
+        여러 샘플에 대해 Attention weights를 분석하여, 주요 feature를 추출합니다.
+        
+        Args:
+            num_samples: 분석할 샘플의 수
+            top_n: 상위 주요 feature 개수
+        
+        Returns:
+            주요 feature와 그들의 빈도를 포함한 리스트
+        """
+        # 주요 feature를 집계할 Counter 객체
+        feature_counter = Counter()
+        
+        # num_samples 개의 랜덤 샘플 선택
+        indices = np.random.choice(len(self.sequences), num_samples, replace=False)
+        selected_sequences = self.sequences[indices]
+        
+        # 각 샘플에 대해 attention weight 분석
+        for sequence in tqdm(selected_sequences, desc="Extracting important features", unit="sample"):
+            attention_weights, _ = self.explain(sequence)
+            
+            # Attention weight가 가장 높은 타임스텝의 feature 선택
+            top_indices = np.argsort(attention_weights)[-top_n:]
+            for step in top_indices:
+                feature_importance = sequence[step] * attention_weights[step]  # 각 feature의 실제 값과 가중치 곱
+                for i, feature in enumerate(self.selected_features):
+                    feature_counter[feature] += abs(feature_importance[i])
+        
+        # 상위 주요 feature 추출 및 딕셔너리 변환
+        top_features = dict(feature_counter.most_common(top_n))
+        
+        # 결과 출력
+        print(f"\nTop {top_n} important features:")
+        for i, (feature, importance) in enumerate(top_features.items(), 1):
+            print(f"Top {i}: {feature} (Importance: {importance:.4f})")
+    
+        return top_features

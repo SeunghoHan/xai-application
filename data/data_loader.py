@@ -4,43 +4,52 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
  
 class PowerWeatherDataset:
-    def __init__(self, file_path, sequence_length=24*30, prediction_length=24):
+    def __init__(self, file_path, sequence_length=24*30, prediction_length=24, target_features=[]):
         self.file_path = file_path
-        self.sequence_length = sequence_length  
-        self.prediction_length = prediction_length  
+        self.sequence_length = sequence_length
+        self.prediction_length = prediction_length
         self.scaler = MinMaxScaler()
-
-        # 모든 피처 정의 (datetime 제외)
-        all_features = ['Global_active_power', 'Global_intensity', 
-                        'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3', 
-                        'Temp_Avg', 'Humidity_Avg']
         
-        self.selected_features = all_features
-
+        if len(target_features) == 0:
+            # 시간 정보 포함
+            self.selected_features = ['Global_active_power', 'Global_intensity', 
+                                      'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3', 
+                                      'Temp_Avg', 'Humidity_Avg', 'sin_hour', 'cos_hour', 
+                                      'sin_day', 'cos_day', 'sin_month', 'cos_month']
+        else:
+            self.selected_features = target_features
+    
+        
     def load_data(self):
+        # Load and preprocess data
         data = pd.read_csv(self.file_path)
-        data = data.drop(['datetime'], axis=1)
-
+        data.drop(columns=['datetime'], errors='ignore', inplace=True)
+        # Fill missing values
         data.fillna(data.mean(), inplace=True)
 
-        data_scaled = self.scaler.fit_transform(data[self.selected_features].values)
+        # Select features
+        data_selected = data[self.selected_features]
 
+        # Normalize the data
+        data_scaled = self.scaler.fit_transform(data_selected.values)
+
+        # Create sequences
         sequences, targets = self.create_sequences(data_scaled)
 
-        train_sequences, eval_sequences, train_targets, eval_targets = train_test_split(
-            sequences, targets, test_size=0.2, random_state=42)
+        # Split the data into train and eval sets
+        train_sequences, eval_sequences, train_targets, eval_targets = train_test_split(sequences, targets, test_size=0.2, random_state=42)
 
         return train_sequences, eval_sequences, train_targets, eval_targets
 
     def create_sequences(self, data):
         sequences = []
         targets = []
-
         for i in range(len(data) - self.sequence_length - self.prediction_length):
-            sequences.append(data[i:i + self.sequence_length, :])
-            targets.append(data[i + self.sequence_length: i + self.sequence_length + self.prediction_length, 0])
-
+            sequences.append(data[i:i + self.sequence_length])
+            # Next 'prediction_length' values for 'Global_active_power' (first column)
+            targets.append(data[i + self.sequence_length : i + self.sequence_length + self.prediction_length, 0])
         return np.array(sequences), np.array(targets)
+
 
 
 class PowerConsumptionDataset:

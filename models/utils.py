@@ -6,18 +6,18 @@ from sklearn.metrics import r2_score
 
 from .lstm import LSTMModel, LSTMModel2
 from .gru import GRUModel
-from .lstm_attention import LSTMWithAttention, BiLSTMWithAttention
+from .lstm_attention import AttentionLSTMModel, LSTMWithAttention
 
 def create_model(model_name, input_size, hidden_size, num_layers, output_size, dropout=0.2):
     if model_name == 'GRU':
         return GRUModel(input_size, hidden_size, num_layers, output_size, dropout)
     elif model_name == 'LSTM':
         return LSTMModel(input_size, hidden_size, num_layers, output_size, dropout)
-    elif model_name == 'LSTM_Attention':
-        # return BiLSTMWithAttention(input_size, hidden_size, num_layers, output_size, dropout)
+    elif model_name == 'LSTM-Att':
         return LSTMWithAttention(input_size, hidden_size, num_layers, output_size, dropout)
     else:
         raise ValueError(f"Model {model_name} is not recognized. Please use 'GRU' or 'LSTM'.")
+        
 
 def train_and_evaluate(model, model_name, train_sequences, train_targets, 
                        eval_sequences, eval_targets, model_path, num_epochs=100, 
@@ -51,10 +51,11 @@ def train_and_evaluate(model, model_name, train_sequences, train_targets,
                 sequences_batch, targets_batch = sequences_batch.to(device), targets_batch.to(device)
                 
                 # Forward pass
-                if 'Attention' in model_name:
+                if 'Att' in model_name:
                     outputs, _ = model(sequences_batch) 
                 else:
                     outputs = model(sequences_batch)
+
                 loss = criterion(outputs.squeeze(), targets_batch)
 
                 # Backward pass and optimization
@@ -77,7 +78,7 @@ def train_and_evaluate(model, model_name, train_sequences, train_targets,
                 # Move batch to GPU
                 sequences_batch, targets_batch = sequences_batch.to(device), targets_batch.to(device)
 
-                if 'Attention' in model_name:
+                if 'Att' in model_name:
                     val_outputs, _ = model(sequences_batch) 
                 else:
                     val_outputs = model(sequences_batch)
@@ -100,7 +101,7 @@ def train_and_evaluate(model, model_name, train_sequences, train_targets,
         if epochs_no_improve >= patience:
             print(f"Early stopping applied at epoch {epoch+1}")
             break
-
+            
 def evaluate_r2_score(model, eval_sequences, eval_targets, model_name, batch_size=64):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -117,7 +118,7 @@ def evaluate_r2_score(model, eval_sequences, eval_targets, model_name, batch_siz
         for sequences_batch, targets_batch in eval_loader:
             sequences_batch, targets_batch = sequences_batch.to(device), targets_batch.to(device)
             
-            if 'Attention' in model_name:
+            if 'Att' in model_name:
                 outputs, _ = model(sequences_batch)
             else:
                 outputs = model(sequences_batch)

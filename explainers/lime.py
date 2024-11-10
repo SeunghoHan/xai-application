@@ -4,10 +4,10 @@ import json
 import numpy as np
 import torch
 import lime
+from tqdm import tqdm
 from lime import lime_tabular
 import matplotlib.pyplot as plt
 
-from .utils import inverse_transform_time_features
 from .base_explainer import BaseExplainer
 
 class LimeExplainer(BaseExplainer):
@@ -31,14 +31,19 @@ class LimeExplainer(BaseExplainer):
         input_data = torch.tensor(input_data, dtype=torch.float32).to(self.device)
         with torch.no_grad():
             outputs = self.model(input_data)
+            if type(outputs) == tuple:
+                outputs = outputs[0]
         return outputs.cpu().numpy()
 
-    def explain(self, data_point, data_index=0, num_features=10):
+    def explain(self, data_point, eval_sequences, data_index=0, num_features=10, is_visual=False):
         specific_data_point = data_point.reshape(-1)
         specific_explanation = self.lime_tab.explain_instance(specific_data_point, self.predict_fn, num_samples=1000, num_features=num_features)
-        specific_explanation.show_in_notebook(show_table=True)
         important_features = specific_explanation.as_list()
-        self.visualize_lime_explanation(important_features, self.sequences, self.sequence_length, self.selected_features, data_index)
+        if is_visual:
+            specific_explanation.show_in_notebook(show_table=True)
+            self.visualize_lime_explanation(important_features, eval_sequences, 
+                                            self.sequence_length, self.selected_features, data_index)
+        
         return specific_explanation.as_list()
 
     def visualize_lime_explanation(self, important_features, sequences, sequence_length, selected_features, data_index=0):
@@ -48,7 +53,7 @@ class LimeExplainer(BaseExplainer):
         alph_op = r'[a-zA-Z_]+\d*(?:_\d+)*'
     
         # 정규화된 데이터를 원래 값으로 복구 (시간 피처 포함)
-        original_sequences = inverse_transform_time_features(sequences, selected_features, self.scaler)
+        original_sequences = self.inverse_transform_time_features(sequences, selected_features, self.scaler)
     
         for feature_description, importance in important_features:
             feature_name = feature_description
@@ -95,3 +100,55 @@ class LimeExplainer(BaseExplainer):
             print(f'\nFeature: {actual_feature} - Detailed Information')
             for time_step, value, importance in values:
                 print(f'Time Step: {time_step}, Feature Value: {value:.3f}, Importance: {importance:.3f}')
+
+    def extract_important_features(self, eval_sequences, num_samples=50, top_n=3):
+        """
+        여러 샘플에 대해 LIME을 수행하고, 중요도가 큰 상위 N개의 feature를 추출합니다.
+        
+        Args:
+            eval_sequences: 평가 데이터셋
+            num_samples: LIME을 적용할 샘플 수
+            top_n: 중요도가 높은 상위 feature 수
+        
+        Returns:
+            모델 예측에 많은 영향을 미치는 상위 feature 리스트
+        """
+        # 초기 feature 중요도를 담을 딕셔너리 생성
+        feature_importance = {feature: 0 for feature in self.selected_features}
+        print("Feature keys in importance dictionary:", feature_importance.keys())
+        
+        # 평가 데이터셋에서 랜덤으로 샘플 선택
+        indices = np.random.choice(len(eval_sequences), num_samples, replace=False)
+        selected_sequences = eval_sequences[indices]
+        
+        for i, data_point in enumerate(tqdm(selected_sequences, desc="Processing samples"), start=1):
+            # 각 샘플에 대해 LIME 설명 생성
+            explanation = self.explain(data_point, eval_sequences, num_features=len(self.selected_features))
+            
+            # 진행도 표시
+            print(f"Processing sample {i}/{num_samples} ({(i / num_samples) * 100:.2f}%)")
+            
+            for feature_description, importance in explanation:
+                # 뒤쪽의 `_숫자` 패턴만 제거
+                actual_feature = [feature for feature in self.selected_features if feature in feature_description][0]
+                
+                # feature가 feature_importance에 존재하는 경우에만 추가
+                if actual_feature in feature_importance:
+                    feature_importance[actual_feature] += abs(importance)
+                else:
+                    print(f"Warning: {actual_feature} not found in selected features")
+                    
+            # 현재 상위 top_n 개 feature와 중요도 점수 출력
+            current_top_features = sorted(feature_importance.items(), key=lambda item: item[1], reverse=True)[:top_n]
+            formatted_top_features = [f"Top{i+1} {feature} ({score:.4f})" for i, (feature, score) in enumerate(current_top_features)]
+            print(f"\rCurrent Top {top_n} features: {', '.join(formatted_top_features)}", end="", flush=True)
+    
+        # 최종 중요도가 큰 상위 N개 feature와 해당 중요도 점수 추출
+        final_top_features = sorted(feature_importance.items(), key=lambda item: item[1], reverse=True)[:top_n]
+        
+        # 최종 결과 출력
+        print("\nFinal Top Important Features with Scores:")
+        for i, (feature, score) in enumerate(final_top_features):
+            print(f"Top{i+1}: {feature} ({score:.4f})")
+        
+        return {feature: score for feature, score in final_top_features}

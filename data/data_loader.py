@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
- 
+
+
 class PowerWeatherDataset:
     def __init__(self, file_path, sequence_length=24*30, prediction_length=24, target_features=[]):
         self.file_path = file_path
@@ -51,6 +52,63 @@ class PowerWeatherDataset:
         return np.array(sequences), np.array(targets)
 
 
+class PowerWeatherDatasetWithSeason:
+    def __init__(self, file_path, sequence_length=24*30, prediction_length=24, target_features=[]):
+        self.file_path = file_path
+        self.sequence_length = sequence_length
+        self.prediction_length = prediction_length
+        self.scaler = MinMaxScaler()
+
+        # 기본 feature 설정
+        if len(target_features) == 0:
+            self.selected_features = ['Global_active_power', 'Global_intensity', 
+                                      'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3', 
+                                      'Temp_Avg', 'Humidity_Avg', 'sin_hour', 'cos_hour', 
+                                      'sin_day', 'cos_day', 'sin_month', 'cos_month']
+        else:
+            self.selected_features = target_features
+
+    def load_data_by_season(self):
+        # Load data
+        data = pd.read_csv(self.file_path)
+
+        # Drop non-numeric columns (like 'datetime')
+        if 'datetime' in data.columns:
+            data.drop(columns=['datetime'], inplace=True)
+
+        # Handle missing values for numeric columns
+        numeric_cols = data.select_dtypes(include=[np.number]).columns
+        data[numeric_cols] = data[numeric_cols].fillna(data[numeric_cols].mean())
+
+        # Ensure 'season' column exists
+        if 'season' not in data.columns:
+            raise ValueError("The dataset must contain a 'season' column for this function.")
+
+        # Normalize data
+        data_scaled = self.scaler.fit_transform(data[self.selected_features])
+
+        # Split by season
+        season_data = {}
+        for season in ['spring', 'summer', 'autumn', 'winter']:
+            season_df = data[data['season'] == season]
+            season_scaled = self.scaler.transform(season_df[self.selected_features])
+
+            # Create sequences for this season
+            sequences, targets = self.create_sequences(season_scaled)
+            season_data[season] = train_test_split(sequences, targets, test_size=0.2, random_state=42)
+
+        return season_data
+
+    def create_sequences(self, data):
+        sequences = []
+        targets = []
+        for i in range(len(data) - self.sequence_length - self.prediction_length):
+            # Input sequence
+            sequences.append(data[i:i + self.sequence_length])
+            # Prediction target (next 'prediction_length' values for the first feature)
+            targets.append(data[i + self.sequence_length:i + self.sequence_length + self.prediction_length, 0])
+        return np.array(sequences), np.array(targets)
+        
 
 class PowerConsumptionDataset:
     def __init__(self, file_path, feature_idx=[], num_of_features=7, sequence_length=60):

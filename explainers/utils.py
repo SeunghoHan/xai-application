@@ -1,13 +1,108 @@
 import numpy as np
 import torch
 
+from sklearn.preprocessing import MinMaxScaler
+
 from .lime import LimeExplainer
-from .lime_multiterm import MultiTermLIMEExplainer
+from .lime_multiterm import LimeExplainer_MT
 from .shap import ShapExplainer
 from .attention import AttentionExplainer
 from .grad_cam import GradCAMExplainer
 from .lrp import LRPExplainer
  
+def get_explainer(explainer_type, model, device, train_data, sequence_length, 
+                  input_size, selected_features, scaler=None):
+    """
+    Initialize the appropriate explainer based on the type.
+
+    Parameters:
+        explainer_type (str): Type of explainer ('LIME', 'SHAP', 'ATTENTION').
+        model (torch.nn.Module): The trained model.
+        device (torch.device): Device (CPU or GPU).
+        train_sequences (np.array): Training data for the explainer.
+        sequence_length (int): Sequence length for the model.
+        input_size (int): Input feature size.
+        selected_features (list): List of selected features for explanation.
+        scaler (object): Scaler for data normalization (if applicable).
+
+    Returns:
+        BaseExplainer: The initialized explainer object.
+    """
+    
+    if isinstance(train_data, tuple):
+        
+        # if isinstance(train_data[0], torch.Tensor):
+        #     train_data[0] = train_data[0].cpu().numpy()  # Convert to NumPy
+        # if isinstance(train_data[1], torch.Tensor):
+        #     train_data[1] = train_data[1].cpu().numpy()  # Convert to NumPy
+            
+        if explainer_type == 'LIME':
+            return LimeExplainer_MT(model=model, 
+                                    device=device, 
+                                    train_long=train_data[0], 
+                                    train_short=train_data[1], 
+                                    sequence_length_long=sequence_length['long'], 
+                                    sequence_length_short=sequence_length['short'], 
+                                    input_size_long=input_size['long'], 
+                                    input_size_short=input_size['short'], 
+                                    selected_features_long=selected_features['long'], 
+                                    selected_features_short=selected_features['short'], 
+                                    scaler=MinMaxScaler())
+            
+        elif explainer_type == 'SHAP':
+            return ShapExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
+        elif explainer_type == 'ATTENTION':
+            return AttentionExplainer(model, device, selected_features)
+        else:
+            print(f"Invalid explainer type: {explainer_type}")
+            return None
+
+        
+    else:
+        if explainer_type == 'LIME':
+            return LimeExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
+        elif explainer_type == 'SHAP':
+            return ShapExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
+        elif explainer_type == 'ATTENTION':
+            return AttentionExplainer(model, device, selected_features)
+        else:
+            print(f"Invalid explainer type: {explainer_type}")
+            return None
+
+    
+
+
+def get_explainer2(explainer_type, model, device, train_sequences, sequence_length, input_size, selected_features, scaler=None):
+    """
+    Initialize the appropriate explainer based on the type.
+
+    Parameters:
+        explainer_type (str): Type of explainer ('LIME', 'SHAP', 'ATTENTION').
+        model (torch.nn.Module): The trained model.
+        device (torch.device): Device (CPU or GPU).
+        train_sequences (np.array): Training data for the explainer.
+        sequence_length (int): Sequence length for the model.
+        input_size (int): Input feature size.
+        selected_features (list): List of selected features for explanation.
+        scaler (object): Scaler for data normalization (if applicable).
+
+    Returns:
+        BaseExplainer: The initialized explainer object.
+    """
+    # Ensure train_sequences is in NumPy format
+    if isinstance(train_sequences, torch.Tensor):
+        train_sequences = train_sequences.cpu().numpy()  # Convert to NumPy
+
+    
+    if explainer_type == 'LIME':
+        return LimeExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
+    elif explainer_type == 'SHAP':
+        return ShapExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
+    elif explainer_type == 'ATTENTION':
+        return AttentionExplainer(model, device, selected_features)
+    else:
+        print(f"Invalid explainer type: {explainer_type}")
+        return None
 
 
 # def get_explainer(explainer_type, model, device, train_sequences, 
@@ -101,39 +196,6 @@ from .lrp import LRPExplainer
 #         print(f"'{explainer_type}' is not supported.")
     
 #     return explainer
-
-
-def get_explainer(explainer_type, model, device, train_sequences, sequence_length, input_size, selected_features, scaler=None):
-    """
-    Initialize the appropriate explainer based on the type.
-
-    Parameters:
-        explainer_type (str): Type of explainer ('LIME', 'SHAP', 'ATTENTION').
-        model (torch.nn.Module): The trained model.
-        device (torch.device): Device (CPU or GPU).
-        train_sequences (np.array): Training data for the explainer.
-        sequence_length (int): Sequence length for the model.
-        input_size (int): Input feature size.
-        selected_features (list): List of selected features for explanation.
-        scaler (object): Scaler for data normalization (if applicable).
-
-    Returns:
-        BaseExplainer: The initialized explainer object.
-    """
-    # Ensure train_sequences is in NumPy format
-    if isinstance(train_sequences, torch.Tensor):
-        train_sequences = train_sequences.cpu().numpy()  # Convert to NumPy
-
-    
-    if explainer_type == 'LIME':
-        return LimeExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
-    elif explainer_type == 'SHAP':
-        return ShapExplainer(model, device, train_sequences, sequence_length, input_size, selected_features, scaler)
-    elif explainer_type == 'ATTENTION':
-        return AttentionExplainer(model, device, selected_features)
-    else:
-        print(f"Invalid explainer type: {explainer_type}")
-        return None
 
 
 # def get_explainer(explainer_type, model, device, train_sequences, 

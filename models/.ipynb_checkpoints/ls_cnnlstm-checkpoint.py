@@ -45,7 +45,7 @@ class LongShortCNNLSTM(nn.Module):
 
         # Short-term CNN
         self.short_cnn = nn.Sequential(
-            nn.Conv1d(13, 16, kernel_size=3, stride=1, padding=1),
+            nn.Conv1d(short_input_size, 16, kernel_size=3, stride=1, padding=1),  # Use dynamic input size
             nn.BatchNorm1d(16),
             nn.ReLU(),
             nn.Dropout(self.dropout_rate),
@@ -87,7 +87,6 @@ class LongShortCNNLSTM(nn.Module):
         combined_features = torch.cat(
             (short_features, long_output.unsqueeze(1).repeat(1, short_features.size(1), 1)), dim=2
         )
-        
         short_output, _ = self.short_lstm(combined_features)
         short_final = self.short_fc(short_output[:, -1, :])
 

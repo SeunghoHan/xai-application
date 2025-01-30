@@ -11,7 +11,7 @@ from .lstm_attention import AttentionLSTMModel, LSTMWithAttention
 from .ls_cnnlstm import LongShortCNNLSTM
 from .ls_cnnlstm_attention import LongShortCNNLSTMWithAttention
 
-from .ls_loss import LS_Loss
+from .ls_loss import LS_Loss, SimpleMSELoss
 
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -338,7 +338,7 @@ def evaluate_for_short_term_forecast(model, eval_sequences, eval_targets, model_
     # Metrics calculation
     r2 = r2_score(all_targets, all_outputs)
     n = len(all_targets)
-    k = eval_data[0].shape[-1] if is_multi_input else eval_data.shape[-1]
+    k = eval_sequences.shape[-1]
     adjusted_r2 = 1 - ((1 - r2) * (n - 1)) / (n - k - 1)
     smape_score = smape(all_targets, all_outputs)
     mase_score = mase(all_targets, all_outputs)

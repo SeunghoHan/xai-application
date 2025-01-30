@@ -11,8 +11,6 @@ import torch
 from sklearn.model_selection import train_test_split
 
 
-# Electric Power Consumption
-
 class EPCDataset:
     def __init__(self, file_path, sequence_length, prediction_length, target_features):
         self.file_path = file_path
@@ -77,7 +75,6 @@ class EPCDataset:
         #     torch.tensor(eval_sequences, dtype=torch.float32),
         #     torch.tensor(eval_targets, dtype=torch.float32).squeeze(-1)
         # )
-    
 
     def _add_datetime_features(self, data):
         # Convert datetime column and add cyclic features
@@ -222,9 +219,6 @@ class SingleTermDataset:
         return np.array(sequences), np.array(targets)
 
 
-
-
-
 class PowerWeatherDataset:
     def __init__(self, file_path, sequence_length=24*30, prediction_length=24, target_features=[]):
         self.file_path = file_path
@@ -232,21 +226,13 @@ class PowerWeatherDataset:
         self.prediction_length = prediction_length
         self.scaler = MinMaxScaler()
         
-        if len(target_features) == 0:
-            # 시간 정보 포함
-            self.selected_features = ['Global_active_power', 'Global_intensity', 
-                                      'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3', 
-                                      'Temp_Avg', 'Humidity_Avg', 'sin_hour', 'cos_hour', 
-                                      'sin_day', 'cos_day', 'sin_month', 'cos_month']
-        else:
-            self.selected_features = target_features
+        self.datetime_features = ['sin_hour', 'cos_hour', 'sin_day', 'cos_day', 'sin_month', 'cos_month']
+        self.selected_features = target_features + self.datetime_features
     
-        
     def load_data(self):
-        # Load and preprocess data
         data = pd.read_csv(self.file_path)
+        data = self._add_datetime_features(data)
         data.drop(columns=['datetime'], errors='ignore', inplace=True)
-        # Fill missing values
         data.fillna(data.mean(), inplace=True)
 
         # Select features
@@ -268,9 +254,6 @@ class PowerWeatherDataset:
             torch.tensor(eval_targets, dtype=torch.float32).squeeze(-1)
         )
 
-        
-        # return train_sequences, eval_sequences, train_targets, eval_targets
-
     def create_sequences(self, data):
         sequences = []
         targets = []
@@ -279,6 +262,22 @@ class PowerWeatherDataset:
             # Next 'prediction_length' values for 'Global_active_power' (first column)
             targets.append(data[i + self.sequence_length : i + self.sequence_length + self.prediction_length, 0])
         return np.array(sequences), np.array(targets)
+
+    def _add_datetime_features(self, data):
+        # Convert datetime column and add cyclic features
+        data['datetime'] = pd.to_datetime(data['datetime'])
+        data['hour'] = data['datetime'].dt.hour
+        data['day'] = data['datetime'].dt.day
+        data['month'] = data['datetime'].dt.month
+
+        data['sin_hour'] = np.sin(2 * np.pi * data['hour'] / 24)
+        data['cos_hour'] = np.cos(2 * np.pi * data['hour'] / 24)
+        data['sin_day'] = np.sin(2 * np.pi * data['day'] / 31)
+        data['cos_day'] = np.cos(2 * np.pi * data['day'] / 31)
+        data['sin_month'] = np.sin(2 * np.pi * data['month'] / 12)
+        data['cos_month'] = np.cos(2 * np.pi * data['month'] / 12)
+
+        return data
 
 
 class PowerWeatherDatasetWithSeason:

@@ -73,7 +73,7 @@ class LimeExplainer_MT(BaseExplainer):
         )
 
         with torch.no_grad():
-            outputs = self.model(long_input=long_input, short_input=short_input)
+            outputs = self.model(long_input, short_input)
             if isinstance(outputs, tuple):
                 selected_output = outputs[output_index]
             else:

@@ -1,0 +1,166 @@
+./trained_models/LS_CNNLSTM_long_2160_short_720_256_256_3_alpha_1.0_beta_1.0.pth
+Important Long-term Features:
+Sub_metering_2: 21.783285017183278
+Humidity: 20.4599577274426
+Sub_metering_3: 19.48523258233868
+Temperature: 19.395823629315654
+Global_active_power: 19.223063158354663
+
+
+Important Short-term Features:
+Global_intensity: 49.27344229496797
+Temperature: 48.77460142806549
+Humidity: 48.060635779284205
+Global_active_power: 46.7036723205211
+Sub_metering_2: 46.605432771500574
+
+R² Score: 0.8371
+Adjusted R²: 0.8368
+SMAPE: 33.34
+MASE: 0.5897
+
+./trained_models/LS_CNNLSTM_long_2160_short_720_256_256_3_alpha_0.3_beta_1.0.pth
+Important Long-term Features:
+Sub_metering_2: 15.669918360959993
+Temperature: 14.62186450497811
+Global_intensity: 14.44346148854034
+Sub_metering_3: 14.140272889649603
+Humidity: 13.337549685905287
+
+
+Important Short-term Features:
+Global_active_power: 15.710423311548157
+Global_intensity: 15.467457453990738
+Sub_metering_2: 13.985840773389226
+Temperature: 13.771465878596258
+Humidity: 13.46596535371103
+
+R² Score: 0.8720
+Adjusted R²: 0.8717
+SMAPE: 31.66
+MASE: 0.5269
+
+./trained_models/LS_CNNLSTM_long_2160_short_720_256_512_3_alpha_0.3_beta_1.0.pth
+Important Long-term Features:
+Sub_metering_2: 7.028098099968182
+Sub_metering_3: 6.375510433403701
+Temperature: 6.341451999989541
+Humidity: 6.195640066247391
+Global_active_power: 6.032228229110826
+
+
+Important Short-term Features:
+Global_intensity: 11.467025721485681
+Global_active_power: 10.852499794229685
+Sub_metering_2: 10.25023477935335
+Sub_metering_3: 9.896568653390645
+Temperature: 9.668064314143155
+
+R² Score: 0.9034
+Adjusted R²: 0.9032
+SMAPE: 28.62
+MASE: 0.4621
+
+
+./trained_models/LS_CNNLSTM_long_2160_short_720_256_512_3_alpha_1.0_beta_1.0.pth
+Important Long-term Features:
+Sub_metering_2: 7.898555545321109
+Humidity: 7.844390825996113
+Global_intensity: 7.609102471581136
+Temperature: 7.507628402969075
+Sub_metering_3: 7.4082578689924405
+
+
+Important Short-term Features:
+Sub_metering_3: 7.766349488152277
+Temperature: 7.713652717389148
+Sub_metering_2: 7.684716026542952
+Global_intensity: 7.648359905696428
+Global_active_power: 7.5176173838150095
+
+R² Score: 0.8045
+Adjusted R²: 0.8042
+SMAPE: 93.90
+MASE: 0.6621
+
+./trained_models/LS_CNNLSTM_Att_long_2160_short_720_256_256_3_alpha_1.0_beta_1.0.pth
+Important Long-term Features:
+Sub_metering_3: 30.01152572469832
+Global_active_power: 27.303837886800512
+Sub_metering_2: 27.24041226302208
+Humidity: 26.319848889928206
+Global_intensity: 25.842225846369598
+
+
+Important Short-term Features:
+Global_intensity: 38.34500750358147
+Global_active_power: 37.94050843879608
+Sub_metering_3: 27.656727101015424
+Sub_metering_2: 26.038116098366444
+Temperature: 23.922743009452024
+
+R² Score: 0.7809
+Adjusted R²: 0.7805
+SMAPE: 36.70
+MASE: 0.6828
+
+
+./trained_models/LS_CNNLSTM_Att_long_2160_short_720_256_256_3_alpha_0.3_beta_1.0.pth
+Important Long-term Features:
+Global_active_power: 20.49182024849715
+Global_intensity: 18.107618359712767
+Sub_metering_2: 12.912196732672818
+Temperature: 12.685401536352558
+Sub_metering_3: 12.4831279592194
+
+
+Important Short-term Features:
+Global_intensity: 42.31447763783929
+Global_active_power: 41.20855471345143
+Sub_metering_3: 22.485182725215648
+Sub_metering_2: 20.775104685361775
+Humidity: 19.00134126826865
+
+R² Score: 0.7117
+Adjusted R²: 0.7112
+SMAPE: 40.54
+MASE: 0.7829
+
+
+./trained_models/LS_CNNLSTM_Att_long_2160_short_720_256_512_3_alpha_0.3_beta_1.0.pth
+Important Long-term Features:
+Global_active_power: 93.06136712585189
+Global_intensity: 86.95359770369424
+Sub_metering_2: 58.469932305889586
+Sub_metering_3: 57.658362913219655
+Humidity: 52.15558702494544
+
+
+Important Short-term Features:
+Global_intensity: 188.06079037006634
+Global_active_power: 161.0856071919514
+Sub_metering_3: 155.35379208104573
+Sub_metering_2: 92.42230886102588
+Humidity: 80.79864660516245
+
+R² Score: 0.7676
+Adjusted R²: 0.7671
+SMAPE: 37.42
+MASE: 0.7044
+
+
+./trained_models/LS_CNNLSTM_Att_long_2160_short_720_256_512_3_alpha_1.0_beta_1.0.pth
+Important Long-term Features:
+Global_active_power: 78.6967267583899
+Global_intensity: 72.49650308636178
+Sub_metering_2: 52.0878382302788
+Sub_metering_3: 51.56294421133554
+Humidity: 48.14306944825738
+
+
+Important Short-term Features:
+Sub_metering_2: 153.38925603545394
+Sub_metering_3: 147.51924135409402
+Global_intensity: 145.96232130428794
+Humidity: 140.60474615876177
+Global_active_power: 138.19418934555387
